@@ -14,3 +14,6 @@ A Kaggle competition where the aim was to predict the price of a house.
 ## Twitter Sentiment Analysis - Naive Bayes and SVM
 The aim was to predict whether a particular tweet mentioning an airline was positive, neutral or negative.
 </br>I performed Naive Bayes and SVM models on the data using tm and caret libraries in R.
+
+## Madrid Pollution - Regression
+The aim was to predict nitrogen dioxide levels in the city of Madrid based on other pollution and weather data.
