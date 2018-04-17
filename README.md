@@ -18,12 +18,12 @@ The aim was to predict whether a particular tweet mentioning an airline was posi
 ## Madrid Pollution - Regression
 The aim was to predict nitrogen dioxide levels in the city of Madrid based on other pollution and weather data. Written in R.
 
-# Spark Regression
+## Spark Regression
 The aim was to predict the bike rental demand on any given hour and weekday. Data from the city of Washington DC and can be sent on request. Written in Python.
 
-# Titanic Null Imputation
+## Titanic Null Imputation
 The aim was to imputate the null values in the titanic data in an intelligent manner that would benefit a regression model. Written in Python.
 </br>https://www.kaggle.com/c/titanic
 
-# Data Visualisation in Python
+## Data Visualisation in Python
 The aim was to experiment with data visualisation in Python. I used seaborn and bokeh.
