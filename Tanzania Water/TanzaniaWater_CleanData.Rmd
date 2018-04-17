@@ -1,0 +1,308 @@
+---
+title: "R Notebook"
+output:
+  html_document: default
+  html_notebook: default
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r results = "hide", message = FALSE}
+# Import
+dyn.load('/Library/Java/JavaVirtualMachines/jdk-9.0.1.jdk/Contents/Home/lib/server/libjvm.dylib')
+library(dplyr)
+library(tidyr)
+library(data.table)
+library(ggplot2)
+library(gridExtra)
+library(googleVis)
+library(caret)
+library(FSelector)
+library(lubridate)
+```
+
+# Import Data
+```{r import data}
+df_origin <- read.csv(file = "/Users/charlotteleysen/Google Drive/*PROJECTS/IE/Term 2/Machine Leaning 2/Tanzania Water Assignment/data/training_set.csv",sep = ",", header = TRUE)
+df_test <- read.csv(file = "/Users/charlotteleysen/Google Drive/*PROJECTS/IE/Term 2/Machine Leaning 2/Tanzania Water Assignment/data/test_set.csv",sep = ",", header = TRUE)
+df_labels <- read.csv("/Users/charlotteleysen/Google Drive/*PROJECTS/IE/Term 2/Machine Leaning 2/Tanzania Water Assignment/data/training_labels.csv",sep = ",", header = TRUE)
+df_des <- read.delim("/Users/charlotteleysen/Google Drive/*PROJECTS/IE/Term 2/Machine Leaning 2/Tanzania Water Assignment/data/Variables_Descriptions",sep = "-", header = FALSE)
+
+```
+
+#DATA UNDERSTANDING
+```{r initial check}
+
+# Checking Structure of the data
+# str(df[,sapply(df, is.numeric)])
+# str(df[,sapply(df, is.factor)])
+# There are 10 numeric variables 
+# There are 30 factor variables
+
+#Checking NAS
+sapply(df, function(x) sum(is.na(x)))
+# There are no NAs in the data, but maybe still zero values 
+
+df <- rbind(df_origin,df_test) 
+df <- merge(df, df_labels, by.x = "id", by.y = "id", all.x = TRUE)
+
+```
+# Numeric Visualisation
+```{r numeric visualisation}
+numeric_data <- cbind(df[,sapply(df, is.numeric)], status_group = df$status_group)
+summary(numeric_data)
+for (i in 1:ncol(numeric_data)) {
+  i <- colnames(numeric_data[i])
+  if (is.numeric(numeric_data[,i])) {
+    print(i)
+    grid.arrange(
+      ggplot(numeric_data, aes(x = numeric_data[,i], fill = status_group)) + geom_histogram(bins = 50),
+      ggplot(numeric_data, aes_q("x", as.name(i))) + geom_boxplot() + coord_flip(),
+      nrow=2)
+  }
+}
+library(grid)
+
+#Checking Extreme Values
+for (i in 1:ncol(numeric_data)) {
+  i <- colnames(numeric_data[i])
+  if (is.numeric(numeric_data[,i])) {
+    ggplot(numeric_data, aes(x = numeric_data[,i], y = numeric_data$status_group)) + geom_point() + xlab(i) + ylab("status_group")
+  }
+}
+
+
+```
+
+# Factor Visualisation
+```{r factor visualisation}
+factor_data <- df[,sapply(df, is.factor)]
+# summary(factor_data)
+for (i in 1:ncol(factor_data)) {
+  if (length(levels(factor_data[,i])) <=20) {
+    i <- colnames(factor_data[i]) 
+    print(i)
+    print(prop.table(table(factor_data[,i], factor_data$status_group), margin = 1))
+    grid.arrange(
+      ggplot(factor_data, aes(x = factor_data[,i], fill = status_group)) + 
+        geom_bar() + 
+        theme(axis.text.x = element_text(angle = 90, hjust = 1))  
+    )
+  }
+ 
+  
+}
+
+```
+
+# Individual Visualisation
+```{r}
+# Latitude vs longitude with color as status_group
+ggplot(subset(df, latitude < 0 & longitude > 0),
+    aes(x = latitude, y = longitude, color = status_group)) + 
+    geom_point(shape = 1) + 
+    theme(legend.position = "top")
+
+```
+
+# Data Cleaning
+#### Step 1
+```{r, results = "hide", message = FALSE}
+df_clean <- df 
+```
+
+General Functions to use in cleaning:
+```{r, results = "hide", message = FALSE}
+
+# weights<- data.frame(information.gain(status_group ~ management + management_group, df_clean))
+# weights$feature <- rownames(weights)
+# weights[order(weights$attr_importance, decreasing = TRUE),]
+# information_gain_features <- weights$feature[weights$attr_importance >= 0.05]
+# 
+# ggplot(df_clean, aes(extraction_type, extraction_type_group)) + geom_point() + coord_flip() +
+#         theme(axis.text.x = element_text(angle = 90, hjust = 1))
+# ggplot(df_clean, aes(extraction_type, extraction_type_class)) + geom_point() + coord_flip() +
+#         theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+#### Step 2
+```{r, message = FALSE}
+# Longitude and Latitude
+summary(df_clean$longitude)
+sum(df_clean$longitude == 0)
+sum(df_clean$latitude == -0.00000002)
+```
+
+```{r, message = FALSE}
+# Missing Mwanza and Shinyanga locations - fetch from Google maps the general lat and longs of each area
+# Mwanza -1.4375142,30.6429398 - height = 1332.952
+# Shinyanga -4.3384641,32.7530288 - height = 1218 m
+df_clean[df_clean$latitude == -0.00000002 & df_clean$region == "Mwanza","latitude"] <- -1.4375142
+df_clean[df_clean$latitude == -0.00000002 & df_clean$region == "Shinyanga","latitude"] <- -4.3384641
+df_clean[df_clean$longitude == 0 & df_clean$region == "Mwanza","longitude"] <- 30.6429398
+df_clean[df_clean$longitude == 0 & df_clean$region == "Shinyanga","longitude"] <- 32.7530288
+df_clean[df_clean$gps_height == 0 & df_clean$region == "Shinyanga","gps_height"] <- 1218
+df_clean[df_clean$gps_height == 0 & df_clean$region == "Mwanza","gps_height"] <- 1333
+
+summary(df_clean$gps_height)
+
+```
+
+##### Step 3
+```{r, message = FALSE}
+
+# Impute gps_height
+#KNN nearest neighbour
+
+  # Convert train and test dfs for relevant prediction variables
+df_train <- df[df$gps_height>0, c("id","gps_height","latitude", "longitude")]
+df_test <- df[df$gps_height<= 0, c("id","gps_height","latitude", "longitude")]
+  
+  # Do to the prediction
+pred <- knnregTrain(df_train[,!names(df_train) %in% c("id", "gps_height")], df_test[,!names(df_test) %in% c("id", "gps_height")], df_train$gps_height, k=1)
+df_test$gps_height <- pred
+
+  # Update df_clean
+df_temp <- rbind(df_train, df_test)
+df_temp <- df_temp[order(df_temp$id),]
+df_clean$gps_height <- df_temp$gps_height 
+
+  # Check the plots
+ggplot(subset(df_clean, latitude < 0 & longitude > 0),
+    aes(x = latitude, y = longitude, color = gps_height)) +
+    geom_point(shape = 1) +
+    theme(legend.position = "top")
+grid.arrange(
+  ggplot(df[df$gps_height > 0 , ], aes(x = gps_height, fill = status_group)) + geom_histogram(bins = 50) + ggtitle("Old dataset"),
+  ggplot(df_clean, aes(x = gps_height, fill = status_group)) + geom_histogram(bins = 50) + ggtitle("Cleaned dataset"),
+  ncol = 2
+)
+
+```
+
+#### Steps 4 to 13
+```{r, message = FALSE}
+##### Step 4
+# Chosee just one.
+# "extraction_type"  - remove as same as the group variable
+# "extraction_type_group" - keep this variable
+# "extraction_type_class" - remove as same as the group variable
+
+##### Step 5
+# "management" - remove as same as the group variable
+# "management_group" - keep this variable
+
+##### Step 6
+# "payment" - remove as a same as the type variable
+# "payment_type"  - keep this variable
+
+##### Step 7
+# "source" - keep this variable
+# "source_type" - remove as same as the source variable
+# "source_class"   - remove as same as the source variable
+
+##### Step 8
+# "funder"
+# "installer"
+# "wpt_name"
+# "basin"
+# "subvillage"
+# "region"
+# "lga"
+# "ward"
+
+# after analysing their graphs, i will leave all these variables as they are
+
+##### Step 9
+# "water_quality" - reduce the number of factors in this, as some have very few rows
+# "quality_group" - remove as same as water quality variable
+
+# water_quality
+#Change Unknown to fluoride abandoned
+df_clean[df_clean$water_quality == 'unknown','water_quality'] <- 'fluoride abandoned'
+df_clean$water_quality <- factor(df_clean$water_quality)
+
+##### Step 10
+# "public_meeting" - keep this variable
+# "waterpoint_type" - reduce the number of factors as same have very few rows
+df_clean[df_clean$waterpoint_type == 'dam','waterpoint_type'] <- 'cattle trough'
+df_clean$waterpoint_type <- factor(df_clean$waterpoint_type)
+
+##### Step 11
+# region_code, district_code should be factor variables
+df_clean$region_code <- as.factor(df_clean$region_code)
+df_clean$district_code <- as.factor(df_clean$district_code)
+
+##### Step 12
+# date_recorded
+# Convert to date category
+df_clean$date_recorded <- as.Date.factor(df_clean$date_recorded)
+max(df_clean$date_recorded)
+df_clean$date_recorded_int <- as.numeric(Sys.Date() - df_clean$date_recorded)
+
+#### Step 13
+# construction_year - convert 0s to median
+df_clean[df_clean$construction_year == 0,"construction_year"] <- median(df_clean[df_clean$construction_year > 0,"construction_year"])
+
+```
+
+# Feature Engineering
+```{r, message = FALSE}
+#  Month and year from date recorded
+df_clean$month_recorded <- month(df_clean$date_recorded)
+df_clean$year_recorded <- year(df_clean$date_recorded)
+df_clean$day_recorded <- day(df_clean$date_recorded)
+
+# age of the well - the older the well the more likely it might fail 
+df_clean$age_of_well <- 2018 - df_clean$construction_year
+
+# monsoon season at time of building - if built during monsoon, it might be less stable
+df_clean$monsoon <- df_clean$month_recorded
+df_clean[df_clean$monsoon %in% c(1,2,6,7,8,9,10),"monsoon"] <- 0
+df_clean[df_clean$monsoon %in% c(3,4,5,11,12),"monsoon"] <- 1
+```
+
+# Feature Removal
+```{r, message = FALSE}
+#These are variables that were not useful or doubled
+delete_vars <- c("num_private", "recorded_by", "quantity_group", "waterpoint_type_group","extraction_type", "extraction_type_class", "management", "payment", "source", "source_class", "date_recorded")
+df_clean <- df_clean[, !names(df_clean) %in% delete_vars]
+
+```
+
+# Variable Importance
+```{r Variable Importance}
+
+#Information Gain
+weights<- data.frame(information.gain(status_group ~ ., df_clean))
+weights$feature <- rownames(weights)
+a <- weights[order(weights$attr_importance, decreasing = TRUE),]
+information_gain_features <- weights$feature[weights$attr_importance >= 0.05]
+
+#Chi Squared
+weights <- data.frame(chi.squared(status_group~., df_clean))
+weights$feature <- rownames(weights)
+b <- weights[order(weights$attr_importance, decreasing = TRUE),]
+chi_squared_features <- weights$feature[weights$attr_importance >= 0.1]
+
+#I will use the Chi Squared variables to subset the df
+
+```
+
+# Train and Test Splitting
+```{r Splitting}
+# Splitting the dataset
+train = df_clean[!is.na(df_clean$status_group),c(chi_squared_features,"status_group")]
+test = df_clean[is.na(df_clean$status_group),c(chi_squared_features,"status_group")]
+
+# Write to csvs to prepare it for modelling in python
+write.csv(train, "/Users/charlotteleysen/Google Drive/*PROJECTS/IE/Term 2/Machine Leaning 2/Tanzania Water Assignment/outputs/train_clean.csv")
+write.csv(test, "/Users/charlotteleysen/Google Drive/*PROJECTS/IE/Term 2/Machine Leaning 2/Tanzania Water Assignment/outputs/test_clean.csv")
+write.csv(df_clean, "/Users/charlotteleysen/Google Drive/*PROJECTS/IE/Term 2/Machine Leaning 2/Tanzania Water Assignment/outputs/df_clean.csv")
+
+```
+
+The models will be run in python as they run faster - see python file.
