@@ -39,17 +39,7 @@ library(data.table)
 
 
 # Introduction
-In this first practical session we will make the first contact with the featuring engineering process and its impact in a ML pipeline.
-Feature engineering is a very important part of the process of developing prediction models. It is considered, by many authors, an art, and it involves human-driven design and intuition. Feature engineering sessions will try to uncover the most relevant issues that must be addressed, and also provide some guidelines to start building sound feature engineering processes for ML problems. 
-
 The experimental dataset we are going to use is the House Prices Dataset. It includes 79 explanatory variables of residential homes. For more details on the dataset and the competition see <https://www.kaggle.com/c/house-prices-advanced-regression-techniques>.
-
-## What is my goal?
-- I have to predict predict the final price of each home (Therefore, this is a regression task)
-- I have to use the feature engineering techniques explained in class to transform the dataset.
-
-# Data Reading and preparation
-The dataset is offered in two separated fields, one for the training and another one for the test set. Best way of moving forward is to sign in into Kaggle and download them from the 'Data' section.
 
 ```{r Load Data}
 setwd("/Users/charlotteleysen/Google Drive/*PROJECTS/IE/Term 2/Machine Leaning 2/Feature Engineering/Feature Engineering Lab")
@@ -64,10 +54,6 @@ length(unique(training_data$Id)) == nrow(training_data)
 There is no duplicates so we remove the Id column
 ```{r Remove the ID Column}
 training_data = training_data[ , -which(names(training_data) %in% c("Id"))]
-
-```
-
-``` {r }
 
 ```
 
@@ -265,14 +251,11 @@ ggplot(data=df) +
   geom_histogram(aes(x=x), bins = 50)
 ```
 
-
-
 We therefore transform the target value applying log.
 ```{r Log transform the target for official scoring}
 # Log transform the target for official scoring
 training_data$SalePrice <- log1p(training_data$SalePrice)
 ```
-
 
 The same "skewness" observed in the target variable also affects other variables. To facilitate the application of the regression model we are going to also eliminate this skewness
 For numeric feature with excessive skewness, perform log transformation
