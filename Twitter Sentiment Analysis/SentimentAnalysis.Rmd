@@ -1,0 +1,263 @@
+---
+title: "SVM Model and Naive Bayes"
+output:
+  html_document: default
+  html_notebook: default
+---
+
+## Problem Statement
+The data we will be using in this analysis is data from Twitter on airlines. I will do a sentiment analysis on tweets and classify whether they are postive, negative or neutral.
+
+I will make use of the bag of words representation provided by the TextMining package tm and will train with SVM and a multinomial Naive Bayes classifier using and the e1071 package.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Needed <- c("tm", "SnowballCC")
+# install.packages(Needed, dependencies=TRUE)
+# install.packages("Rcampdf", repos = "http://datacube.wu.ac.at/", type = "source")
+library(tm)
+library(e1071)
+library(SnowballC)
+```
+
+## Data Preparation
+
+Import and shuffle the data
+```{r, message=FALSE, warning=FALSE}
+setwd('/Users/charlotteleysen/Google Drive/*PROJECTS/IE/Term 2/Machine Leaning 2/SVM_Naive Assignment/assignment_data/charlotte_leysen_assignment/')
+df <- read.csv('training.csv')
+df_test <- read.csv('test.csv')
+# Randomize the dataset to facilitate the training process
+set.seed(123)
+df <- df[sample(nrow(df)), ]
+
+# Convert the target variable ('class') from character to factor.
+df$airline_sentiment <- as.factor(df$airline_sentiment)
+```
+
+Convert the data to a SimpleCorpus format
+```{r, echo=TRUE}
+corpus <- Corpus(VectorSource(df$text))
+
+# We can take a look to the corpus
+inspect(corpus[1:2])
+```
+
+Now I will create a function to clean up the text. The methods decided to apply are:
+
+  * stemming
+  * remove punctuation
+  * strip blanks
+  * remove stopwords
+
+```{r}
+cleanCorpus <- function(corpus) {
+  corpus <-tm_map(corpus, stemDocument)
+  corpus.tmp <- tm_map(corpus,removePunctuation)
+  corpus.tmp <- tm_map(corpus.tmp,stripWhitespace)
+  corpus.tmp <- tm_map(corpus.tmp,removeWords,stopwords("en"))
+  return(corpus.tmp)
+}
+```
+
+Using this function, I clean the corpus
+```{r}
+corpus.clean <- cleanCorpus(corpus)
+```
+
+Represent the bag of words tokens with a document term matrix (DTM). The rows of the DTM will correspond to the documents in the collection, columns to the terms, and its elements are the term frequencies.
+```{r}
+dtm <- DocumentTermMatrix(corpus.clean)
+
+```
+
+
+### Training and Test data sets.
+
+Separate data into training and test sets (80% for training and 20% for test).
+
+```{r}
+dataset.train <- df[1:1500,]
+dataset.test <- df[1501:2000,]
+
+dtm.train <- dtm[1:1500,]
+dtm.test <- dtm[1501:2000,]
+
+corpus.clean.train <- corpus.clean[1:1500]
+corpus.clean.test <- corpus.clean[1501:2000]
+```
+
+Now we are ready to start modelling the data.
+
+# SVM Modelling
+
+Import the caret library
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+library(caret)
+```
+
+Prepare the train and test data for SVM
+```{r}
+
+svmX <- as.matrix(dtm.train)
+svmy <- dataset.train$airline_sentiment
+
+training_data <- as.data.frame(cbind(svmy,svmX))
+test_data <- as.data.frame(as.matrix(dtm.test))
+```
+
+Run the model
+
+Using the functions in `e1071` package to create an SVM model for the training data, we train the model
+```{r warning=FALSE}
+sv <- svm(svmy~., training_data, type="C-classification", kernel="sigmoid", cost=1)
+```
+
+I evaluate the SVM model in terms of accuracy by predicting on the test data and computing the confusion matrix
+```{r}
+prediction_sv <- predict(sv, test_data)
+table("Predictions"= prediction_sv,  "Actual" = dataset.test$airline_sentiment )
+
+```
+
+Calculate the accuracy from the confusion matrix
+```{r}
+acc_sv <- function(table){
+  TP = table[1,1];  # true positives
+  TN = table[2,2];  # true negatives
+  FP = table[1,2];  # false positives
+  FN = table[2,1];  # false negatives
+  acc = (TP + TN)/(TP + TN + FP + FN)
+  return(acc)
+}
+acc_sv(table("Predictions"= prediction_sv,  "Actual" = dataset.test$airline_sentiment ))
+```
+The result is 0.767 accuracy.
+
+Now we try to tune SVM parameters to further improve the model performance using 5 fold cross validation. This code takes a while to run so have commented it out.
+```{r warning=FALSE}
+# fitControl <- trainControl(method = "cv",
+#                            number = 5,
+#                            verboseIter = TRUE)
+# 
+# cv.svm <- train(svmX,svmy,
+#                 method="svmRadial",
+#                 preProc = c("center", "scale"),
+#                 tuneLength = 5,
+#                 metric = "Accuracy",
+#                 trControl = fitControl)
+# 
+# cv.svm.prediction <- predict(cv.svm, test_data)
+# table("Predictions"= cv.svm.prediction,  "Actual" = dataset.test$airline_sentiment )
+# 
+# acc_sv(table("Predictions"= cv.svm.prediction,  "Actual" = dataset.test$airline_sentiment ))
+```
+The result is a small improvement on the original accuracy to 0.7899761.
+
+Now I will model the data using Naive Bayes method to see whether we can find a better model.
+
+# Naive Bayes Modelling 
+
+### Feature Selection
+The term-frequency matrix contains almost 10,000 features (i.e., terms). Not all of them are useful for classification so we will remove some.
+
+```{r}
+dim(dtm.train)
+```
+
+The removeSparseTerms function in the tm package helps to remove the sparse terms in the matrix.
+
+```{r}
+dtm.train.nb <- removeSparseTerms(dtm.train, 0.99)
+```
+
+I apply the same procedure for test set
+```{r}
+dtm.test.nb <- removeSparseTerms(dtm.test, 0.99)
+```
+
+For sentiment classification, word occurrence matters more than word frequency. Therefore, I replace term frequencies in the dataset by Boolean presence/absence features.
+```{r}
+# Convert the word frequency to binary 1/0 presence
+binarize <- function(dataset) {
+  factor(ifelse(dataset > 0, 1,0), levels=c(0,1), labels=c("Yes", "No"))
+}
+
+# Apply the function to training and test data
+dtm.train.nb.binary <- apply(dtm.train.nb, 2, binarize)
+dtm.test.nb.binary <- apply(dtm.test.nb, 2, binarize)
+```
+
+### Naïve Bayes Model
+Making use of the `naiveBayes` package, I predict the polarity of the reviews in the test set.
+
+```{r}
+nb_model <- naiveBayes(dtm.train.nb.binary, dataset.train$airline_sentiment, laplace = 1)
+probs <- predict(nb_model, newdata=dtm.test.nb.binary, type = "raw")
+classes <- predict(nb_model, newdata=dtm.test.nb.binary, type = "class")
+```
+
+### Model evaluation
+
+#### Confusion Matrix
+
+I calculate the confusion matrix and the accuracy of the model. 
+```{r}
+# Confusion matrix
+table("Predictions"= classes,  "Actual" = dataset.test$airline_sentiment )
+```
+
+Using the confusion matrix, I compute the Accuracy
+
+```{r}
+acc <- function(table){
+  TP = table[1,1];  # true positives
+  TN = table[2,2];  # true negatives
+  FP = table[1,2];  # false positives
+  FN = table[2,1];  # false negatives
+  acc = (TP + TN)/(TP + TN + FP + FN)
+  return(acc)
+}
+acc(table("Predictions"= classes,  "Actual" = dataset.test$airline_sentiment ))
+```
+The accuracy with Naive Bayes is 0.78. This is around the same as that of SVM with 5 fold cv. Since Naive Bayes is much faster, I will use this model for the final test data.
+
+#Train the full data
+
+Now I have chosen Naive Bayes for our model, I will retrain the model with all the data.
+``` {r}
+dtm.nb.all <- removeSparseTerms(dtm, 0.99)
+dtm.nb.binary.all <- apply(dtm.nb.all, 2, binarize)
+nb_model_all <- naiveBayes(dtm.nb.binary.all, df$airline_sentiment, laplace = 1)
+
+```
+
+### Clean and prepare the test data
+``` {r}
+corpus_test <- Corpus(VectorSource(df_test$text))
+corpus.clean.test <- cleanCorpus(corpus_test)
+dtm_test <- DocumentTermMatrix(corpus.clean.test)
+dtm.nb.test <- removeSparseTerms(dtm_test, 0.99)
+dtm.nb.binary.test <- apply(dtm.nb.test, 2, binarize)
+```
+
+### Predict the test data
+```{r}
+classes_test <- predict(nb_model_all, newdata=dtm.nb.binary.test, type = "class")
+submission <- data.frame(cbind(df_test$tweet_id, classes_test))
+```
+
+### Prepare for submission
+```{r}
+submission[submission$classes_test == 1,"classes_test"] <- "negative"
+submission[submission$classes_test == 2,"classes_test"] <- "neutral"
+submission[submission$classes_test == 3,"classes_test"] <- "positive"
+colnames(submission) <- c("tweet_id","airline_sentiment")
+
+head(submission)
+
+write.csv(submission, "/Users/charlotteleysen/Google Drive/*PROJECTS/IE/Term 2/Machine Leaning 2/SVM_Naive Assignment/assignment_data/charlotte_leysen_assignment/submission_file.csv", row.names = FALSE)
+
+```
+
+
+
